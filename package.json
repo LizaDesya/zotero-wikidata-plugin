@@ -1,24 +1,24 @@
 {
-  "name": "zotero-plugin-template",
+  "name": "zotero-wikidata-plugin",
   "type": "module",
-  "version": "3.1.0",
-  "description": "Zotero Plugin Template",
+  "version": "0.1.0",
+  "description": "Link Zotero items to Wikidata and turn annotations into referenced Wikidata statements",
   "config": {
-    "addonName": "Zotero Plugin Template",
-    "addonID": "addontemplate@euclpts.com",
-    "addonRef": "addontemplate",
-    "addonInstance": "AddonTemplate",
-    "prefsPrefix": "extensions.zotero.addontemplate"
+    "addonName": "Wikidata for Zotero",
+    "addonID": "zotero-wikidata@lizadesya.github.io",
+    "addonRef": "zoterowikidata",
+    "addonInstance": "ZoteroWikidata",
+    "prefsPrefix": "extensions.zotero.zoterowikidata"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/windingwind/zotero-plugin-template.git"
+    "url": "git+https://github.com/LizaDesya/zotero-wikidata-plugin.git"
   },
-  "author": "windingwind",
+  "author": "Liza Desya",
   "bugs": {
-    "url": "https://github.com/windingwind/zotero-plugin-template/issues"
+    "url": "https://github.com/LizaDesya/zotero-wikidata-plugin/issues"
   },
-  "homepage": "https://github.com/windingwind/zotero-plugin-template#readme",
+  "homepage": "https://github.com/LizaDesya/zotero-wikidata-plugin#readme",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "zotero-plugin serve",

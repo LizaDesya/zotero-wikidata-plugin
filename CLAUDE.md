@@ -13,18 +13,21 @@ It is a fork of [windingwind/zotero-plugin-template](https://github.com/windingw
 
 ### Current state
 
-The code is still the unmodified template. Until it's rebranded:
+Rebranded, with the template demos removed. No features yet: the plugin
+registers its preferences pane and nothing else.
 
-- `package.json` still has template identity: `name`, `description`,
-  `config.addonName` / `addonID` / `addonRef` / `addonInstance` /
-  `prefsPrefix`, `author`, `repository`, `homepage`, `bugs`. These flow into
-  the manifest, bootstrap, FTL file names, pref keys, and the global
-  `Zotero.<addonInstance>` object, so change them together and rebuild.
-- `src/modules/examples.ts` and the calls to it in `src/hooks.ts` are demo
-  code. Replace them with real modules; don't build features on top of them.
-- `addon/prefs.js` has placeholder prefs (`enable`, `input`).
-- The `@typescript-eslint/no-unused-vars` override in `eslint.config.mjs`
-  exists only for the template examples. Remove it once they're gone.
+- Identity is in `package.json` `config`: addon name "Wikidata for Zotero",
+  ID `zotero-wikidata@lizadesya.github.io`, ref `zoterowikidata`, instance
+  `Zotero.ZoteroWikidata`, prefs prefix `extensions.zotero.zoterowikidata`.
+  These flow into the manifest, bootstrap, FTL file names, pref keys and the
+  global object, so change them together and rebuild.
+- Prefs: `wikibaseUrl` (defaults to `https://test.wikidata.org`, so nothing
+  reaches production until it is changed deliberately) and `editSummary`.
+- Locale is `en-US` only; `zh-CN` was dropped deliberately. Only
+  `addon.ftl` and `preferences.ftl` exist. Add a `mainWindow.ftl` (and
+  `insertFTLIfNeeded` in `onMainWindowLoad`) when the first main-window UI
+  lands.
+- The icons in `addon/content/icons/` are still the template's.
 
 ## Commands
 
@@ -60,7 +63,8 @@ Built with `zotero-plugin-scaffold` (esbuild, target `firefox115`) and
 - `src/addon.ts`: `Addon` class. Runtime state goes in `addon.data`, and any
   public API for other plugins goes in `addon.api`.
 - `src/hooks.ts`: lifecycle and event dispatchers (`onStartup`,
-  `onMainWindowLoad`, `onNotify`, `onPrefsEvent`, ...). **Hooks only
+  `onShutdown`, `onMainWindowLoad`, `onMainWindowUnload`). Add `onNotify`,
+  `onPrefsEvent` and the like as features need them. **Hooks only
   dispatch.** Put real work in `src/modules/`.
 - `src/modules/`: feature code. `src/utils/`: shared helpers (`prefs.ts`,
   `locale.ts`, `window.ts`, `ztoolkit.ts`).
@@ -79,8 +83,7 @@ Built with `zotero-plugin-scaffold` (esbuild, target `firefox115`) and
   write through `getPref` / `setPref` in `src/utils/prefs.ts`, which add
   `config.prefsPrefix` and are typed from the generated `prefs.d.ts`.
 - User-visible strings go in Fluent `.ftl` files under `addon/locale/`, read
-  with `getString()`. Add every key to `en-US`. Keep `zh-CN` in sync or drop
-  it deliberately.
+  with `getString()`. `en-US` is the only locale.
 - Formatting: Prettier (80 cols, 2 spaces, LF). ESLint uses
   `@zotero-plugin/eslint-config`.
 - Tests live in `test/*.test.ts` (mocha + chai) and run inside Zotero with
