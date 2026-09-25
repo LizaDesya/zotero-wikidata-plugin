@@ -180,6 +180,39 @@ function qsTime(d: string): string {
 /** Newlines and tabs would split the QS line. Collapsing whitespace changes nothing else. */
 const clean = (t: string) => t.replace(/\s+/g, " ").trim();
 
+/**
+ * Enclosing pairs, and the marks that make stripping them unsafe when they
+ * also appear inside. ’ is left out for ‘…’ because it doubles as an apostrophe.
+ */
+const PAIRS: Array<[string, string, string[]]> = [
+  ['"', '"', ['"']],
+  ["“", "”", ["“", "”"]],
+  ["'", "'", ["'"]],
+  ["‘", "’", ["‘"]],
+  ["«", "»", ["«", "»"]],
+];
+
+/**
+ * Quotations go on Wikidata without enclosing quote marks, but the original
+ * text may use quote marks too: `“A” and “B”` starts and ends with them and
+ * is not wrapped. Strip only when the same marks don't appear inside.
+ */
+function wrapping(t: string): {
+  text: string;
+  state: "none" | "strip" | "unsure";
+} {
+  const pair = PAIRS.find(
+    ([open, close]) => t.length > 1 && t.startsWith(open) && t.endsWith(close),
+  );
+  if (!pair) return { text: t, state: "none" };
+  const inner = t.slice(1, -1);
+  if (pair[2].some((mark) => inner.includes(mark)))
+    return { text: t, state: "unsure" };
+  return { text: inner.trim(), state: "strip" };
+}
+const UNSURE =
+  "starts and ends with quote marks that also appear inside, so they may be the original text's; left as is, check by hand";
+
 function formatValue(raw: string, datatype: string, lang: string): string {
   switch (datatype) {
     case "wikibase-item":
@@ -328,8 +361,11 @@ async function draft(inputPath: string) {
       if (src.statedIn) refCols.push("S248", src.statedIn.toUpperCase());
       if (src.title) refCols.push("S1476", `${l}:"${clean(src.title)}"`);
       for (const q of [src.quote ?? []].flat()) {
+        const { text, state } = wrapping(clean(q));
         if (clean(q) !== q) notes.push("quote whitespace collapsed");
-        refCols.push("S1683", `${l}:"${clean(q)}"`);
+        if (state === "strip") notes.push("enclosing quote marks removed");
+        if (state === "unsure") notes.push(`quote ${UNSURE}`);
+        refCols.push("S1683", `${l}:"${text}"`);
       }
       const retrieved = src.retrieved ?? input.retrieved ?? today();
       refCols.push("S813", qsTime(retrieved));
@@ -521,6 +557,14 @@ async function runChecks(d: Doc, idx: number[], s = loadRepo()) {
         if (sn.val.kind === "string" || sn.val.kind === "mono")
           for (const h of textHazards(sn.val.text))
             warn.push(`${sn.pid} text ${h}`);
+        if (sn.pid === "P1683" && "text" in sn.val) {
+          const w = wrapping(sn.val.text).state;
+          if (w === "strip")
+            warn.push(
+              "P1683 quote is wrapped in its own quote marks; Wikidata quotations go without them",
+            );
+          if (w === "unsure") warn.push(`P1683 quote ${UNSURE}`);
+        }
       }
       if (!l.refs.length) warn.push("no reference");
       l.refs.forEach((g, k) => {

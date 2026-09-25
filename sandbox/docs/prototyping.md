@@ -117,7 +117,15 @@ properties.
 
 Plain values follow the property's datatype, looked up live: dates as
 `YYYY`, `YYYY-MM` or `YYYY-MM-DD` (QS precision `/9`, `/10`, `/11`),
-strings and URLs quoted, monolingual text as `lang:"…"`. Zotero keys never
+strings and URLs quoted, monolingual text as `lang:"…"`. The `"…"` is QS
+syntax and isn't saved. Quotations go on Wikidata without enclosing quote
+marks, so `draft` strips a pair that wraps the whole quote (`"…"`, `“…”`,
+`'…'`, `‘…’`, `«…»`) and notes it under the line's provenance. Quote marks
+that belong to the original text stay, curly ones included. A quote like
+`“Hyperstition” and “Lemurian time”` starts and ends with quote marks
+without being wrapped. When the same marks also appear inside, `draft`
+leaves the text alone and flags it to check by hand. `check` warns about a
+quote still wrapped, or ambiguous, after a revision by hand. Zotero keys never
 enter the QS text. They go in the provenance list, with `zotero://` links.
 
 **Batch file.** A header (goal, targets, collection, snapshot `crawledAt`,
@@ -165,6 +173,37 @@ parsers' source (QS 2 `quickstatements.php`, QS 3.0
 - `/* … */` at the end of a line becomes the edit summary.
 - Wikidata limits strings, URLs and monolingual text to 1,500 characters
   (`wmgWikibaseStringLimits` in wmf-config).
+
+### `sandbox/scripts/zotero.ts`
+
+A minimal, read-only annotation digest over Zotero's local API
+(`localhost:23119`). It needs Zotero running with "Allow other applications
+on this computer to communicate with Zotero" turned on. One request fetches
+every annotation carrying a tag. The script groups them by source work and
+shows each annotation's key, text, comment, co-tags, and the source's URL
+and `QID:` line from Extra.
+
+```sh
+node sandbox/scripts/zotero.ts tag p:monterre-zelda          # readable digest
+node sandbox/scripts/zotero.ts tag p:monterre-zelda --json   # records for a qs.ts input
+```
+
+The local API ignores `itemKey`, so the script fetches parent items one at a
+time. This is a first cut of the planned annotation digest, not its design.
+
+### `/batch-session` skill
+
+`.claude/skills/batch-session/SKILL.md` starts or resumes a session for one
+item, from a Zotero tag (`/batch-session p:monterre-zelda`) or a batch file.
+It works in four steps:
+
+1. Gather the annotations, the item's live statements and the graph's view
+   of the item.
+2. Map quotes to statements, then check with the user.
+3. Deal with any new items the quotes need, then check with the user.
+4. Write the input and draft, then hand the batch over.
+
+A resume runs `qs.ts next`, `mark` and `verify`.
 
 ### Also available in agent sessions
 
