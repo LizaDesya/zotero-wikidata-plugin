@@ -11,101 +11,30 @@
  * Imports schema.ts from the hijinx repo so the edge rules never drift.
  * Set HIJINX_REPO if the repo is not a sibling of this one.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import {
+  WD_API,
+  WDQS,
+  coreSet,
+  findCitations,
+  getJson,
+  labeller,
+  loadLive,
+  loadRepo,
+  schema,
+  type Ref,
+  type Snapshot,
+  type Statement,
+} from "./lib.ts";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = resolve(
-  process.env.HIJINX_REPO ??
-    join(HERE, "..", "..", "..", "hijinx-world-website"),
-);
-const REPO_JSON = join(REPO, "public/interactive/2026-ccru-graph/graph.json");
-const LIVE_JSON = "https://hijinx.world/interactive/2026-ccru-graph/graph.json";
-const WD_API = "https://www.wikidata.org/w/api.php";
-const WDQS = "https://query.wikidata.org/sparql";
-const UA =
-  "WikidataForZotero-agent-scripts/0.1 (https://github.com/LizaDesya/zotero-wikidata-plugin)";
-
-if (!existsSync(REPO_JSON)) {
-  console.error(`No snapshot at ${REPO_JSON}. Set HIJINX_REPO.`);
-  process.exit(1);
-}
-const schema = await import(
-  pathToFileURL(join(REPO, "src/components/ccru-graph/schema.ts")).href
-);
 const { EDGE_PROPERTIES, VIA_PIDS, classifyByP31 } = schema;
-
-type Ref = {
-  url?: string;
-  statedIn?: string;
-  title?: string;
-  quotations?: string[];
-};
-type Statement = {
-  value: string;
-  type: string;
-  qualifiers?: Record<string, string[]>;
-  references?: Ref[];
-};
-type Entity = {
-  label: string;
-  description?: string;
-  pruned?: true;
-  claims: Record<string, Statement[]>;
-};
-type Snapshot = {
-  builtAt: string;
-  crawledAt: string;
-  root: string;
-  scope: string[];
-  counts: Record<string, number>;
-  properties: Record<string, { label: string }>;
-  labels: Record<string, string>;
-  entities: Record<string, Entity>;
-};
 
 const [cmd, ...rest] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const arg = rest.join(" ");
 const useLive = process.argv.includes("--live");
 
-/** Retries a maxlag refusal after Retry-After, as the Wikimedia API asks. */
-async function getJson(url: string, tries = 4): Promise<any> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": UA, "Api-User-Agent": UA },
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
-  const body = await res.json();
-  if (body.error?.code === "maxlag" && tries > 1) {
-    const wait = Number(res.headers.get("retry-after") ?? 5);
-    console.error(`(Wikidata lagged, retrying in ${wait}s)`);
-    await new Promise((r) => setTimeout(r, wait * 1000));
-    return getJson(url, tries - 1);
-  }
-  if (body.error) throw new Error(`${body.error.code}: ${body.error.info}`);
-  return body;
-}
-
-const loadRepo = (): Snapshot => JSON.parse(readFileSync(REPO_JSON, "utf8"));
-const loadLive = async (): Promise<Snapshot> => getJson(LIVE_JSON);
 const load = () => (useLive ? loadLive() : Promise.resolve(loadRepo()));
-
-function labeller(s: Snapshot) {
-  return (qid: string) =>
-    `${s.entities[qid]?.label ?? s.labels[qid] ?? "?"} (${qid})`;
-}
-
-function coreSet(s: Snapshot): Set<string> {
-  const core = new Set([s.root]);
-  for (const qid of s.scope) {
-    for (const pid of ["P463", "P1416"]) {
-      for (const st of s.entities[qid]?.claims[pid] ?? []) {
-        if (st.type === "q" && st.value === s.root) core.add(qid);
-      }
-    }
-  }
-  return core;
-}
 
 type Edge = {
   pid: string;
@@ -365,67 +294,26 @@ async function wd(qid: string) {
   );
 }
 
-/** Zotero text and Wikidata text disagree on quote marks and spacing. */
-const normText = (t: string) =>
-  t
-    .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/** Scheme, www., trailing slash and fragment don't make a different source. */
-const normUrl = (u: string) =>
-  u
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/#.*$/, "")
-    .replace(/\/+$/, "");
-
 async function ref(query: string) {
   const s = await load();
   const name = labeller(s);
   const scope = new Set(s.scope);
   const edgePids = new Set(EDGE_PROPERTIES.map((c: any) => c.pid));
-  const isQid = /^Q\d+$/i.test(query);
-  const isUrl = /^(https?:\/\/|www\.)/i.test(query);
-  const needle = isUrl ? normUrl(query) : normText(query);
-
-  const matchRef = (r: Ref): string[] => {
-    if (isQid) return r.statedIn === query.toUpperCase() ? ["stated in"] : [];
-    if (isUrl) return r.url && normUrl(r.url).includes(needle) ? ["url"] : [];
-    const hits: string[] = [];
-    if (r.url && normUrl(r.url).includes(needle)) hits.push("url");
-    if (r.title && normText(r.title).includes(needle)) hits.push("title");
-    if (r.quotations?.some((q) => normText(q).includes(needle)))
-      hits.push("quotation");
-    return hits;
-  };
-
-  let count = 0;
-  for (const [qid, e] of Object.entries(s.entities)) {
-    for (const [pid, sts] of Object.entries(e.claims)) {
-      for (const st of sts) {
-        const refs = (st.references ?? []).filter((r) => matchRef(r).length);
-        if (!refs.length) continue;
-        count++;
-        const value = st.type === "q" ? name(st.value) : st.value;
-        const drawn = edgePids.has(pid) && scope.has(qid) ? " [edge]" : "";
-        console.log(
-          `${name(qid)} ${pid} ${s.properties[pid]?.label ?? ""} → ${value}${drawn}`,
-        );
-        for (const r of refs)
-          console.log(
-            `  matched ${matchRef(r).join(", ")}\n${fmtRefs(s, [r], "    ")}`,
-          );
-      }
-    }
+  const hits = findCitations(s, query);
+  for (const { subject, pid, statement: st, refs } of hits) {
+    const value = st.type === "q" ? name(st.value) : st.value;
+    const drawn = edgePids.has(pid) && scope.has(subject) ? " [edge]" : "";
+    console.log(
+      `${name(subject)} ${pid} ${s.properties[pid]?.label ?? ""} → ${value}${drawn}`,
+    );
+    for (const r of refs)
+      console.log(`  matched ${r.hits.join(", ")}
+${fmtRefs(s, [r.ref], "    ")}`);
   }
   console.log(
-    count
-      ? `\n${count} statement(s) cite it in the snapshot (crawled ${s.crawledAt}).`
+    hits.length
+      ? `
+${hits.length} statement(s) cite it in the snapshot (crawled ${s.crawledAt}).`
       : `Not cited anywhere in the snapshot (crawled ${s.crawledAt}). Edits since then won't show until a re-crawl.`,
   );
 }

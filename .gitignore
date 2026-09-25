@@ -14,3 +14,5 @@ tsconfig.tsbuildinfo
 .scaffold
 build
 logs
+# QuickStatements batches (sandbox/scripts/qs.ts): one-off working files
+sandbox/statements
