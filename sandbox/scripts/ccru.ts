@@ -5,6 +5,7 @@
  *   node sandbox/scripts/ccru.ts find <text>       label search in the snapshot
  *   node sandbox/scripts/ccru.ts item <QID>        how the graph sees one item
  *   node sandbox/scripts/ccru.ts wd <QID>          snapshot vs live Wikidata
+ *   node sandbox/scripts/ccru.ts ref <text|URL|QID> where a source is cited
  *
  * Add --live to read the published graph.json instead of the repo copy.
  * Imports schema.ts from the hijinx repo so the edge rules never drift.
@@ -64,7 +65,8 @@ type Snapshot = {
   entities: Record<string, Entity>;
 };
 
-const [cmd, arg] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const [cmd, ...rest] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const arg = rest.join(" ");
 const useLive = process.argv.includes("--live");
 
 /** Retries a maxlag refusal after Retry-After, as the Wikimedia API asks. */
@@ -363,11 +365,77 @@ async function wd(qid: string) {
   );
 }
 
+/** Zotero text and Wikidata text disagree on quote marks and spacing. */
+const normText = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Scheme, www., trailing slash and fragment don't make a different source. */
+const normUrl = (u: string) =>
+  u
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/#.*$/, "")
+    .replace(/\/+$/, "");
+
+async function ref(query: string) {
+  const s = await load();
+  const name = labeller(s);
+  const scope = new Set(s.scope);
+  const edgePids = new Set(EDGE_PROPERTIES.map((c: any) => c.pid));
+  const isQid = /^Q\d+$/i.test(query);
+  const isUrl = /^(https?:\/\/|www\.)/i.test(query);
+  const needle = isUrl ? normUrl(query) : normText(query);
+
+  const matchRef = (r: Ref): string[] => {
+    if (isQid) return r.statedIn === query.toUpperCase() ? ["stated in"] : [];
+    if (isUrl) return r.url && normUrl(r.url).includes(needle) ? ["url"] : [];
+    const hits: string[] = [];
+    if (r.url && normUrl(r.url).includes(needle)) hits.push("url");
+    if (r.title && normText(r.title).includes(needle)) hits.push("title");
+    if (r.quotations?.some((q) => normText(q).includes(needle)))
+      hits.push("quotation");
+    return hits;
+  };
+
+  let count = 0;
+  for (const [qid, e] of Object.entries(s.entities)) {
+    for (const [pid, sts] of Object.entries(e.claims)) {
+      for (const st of sts) {
+        const refs = (st.references ?? []).filter((r) => matchRef(r).length);
+        if (!refs.length) continue;
+        count++;
+        const value = st.type === "q" ? name(st.value) : st.value;
+        const drawn = edgePids.has(pid) && scope.has(qid) ? " [edge]" : "";
+        console.log(
+          `${name(qid)} ${pid} ${s.properties[pid]?.label ?? ""} → ${value}${drawn}`,
+        );
+        for (const r of refs)
+          console.log(
+            `  matched ${matchRef(r).join(", ")}\n${fmtRefs(s, [r], "    ")}`,
+          );
+      }
+    }
+  }
+  console.log(
+    count
+      ? `\n${count} statement(s) cite it in the snapshot (crawled ${s.crawledAt}).`
+      : `Not cited anywhere in the snapshot (crawled ${s.crawledAt}). Edits since then won't show until a re-crawl.`,
+  );
+}
+
 const commands: Record<string, (a: string) => Promise<void>> = {
   status,
   find,
   item,
   wd,
+  ref,
 };
 const run = commands[cmd ?? ""];
 if (!run || (cmd !== "status" && !arg)) {

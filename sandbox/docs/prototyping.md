@@ -53,10 +53,14 @@ node sandbox/scripts/ccru.ts status        # repo vs live snapshot drift
 node sandbox/scripts/ccru.ts find <text>   # label search, marks scope/pruned/label-only
 node sandbox/scripts/ccru.ts item <QID>    # class, scope, drawn edges + refs, why not drawn
 node sandbox/scripts/ccru.ts wd <QID>      # snapshot vs live Wikidata, incl. incoming (SPARQL)
+node sandbox/scripts/ccru.ts ref <text|URL|QID>  # every statement citing a quote, URL or source
 ```
 
 Add `--live` to read the published JSON. Use `wd` after an edit to see
-whether it reached Wikidata and whether a re-crawl is needed.
+whether it reached Wikidata and whether a re-crawl is needed. Use `ref` before
+drafting a statement from an annotation, to check whether that quote or URL is
+already cited. It ignores differences in quote marks, spacing and URL scheme.
+A QID lists everything whose reference says "stated in" that source.
 
 ### Also available in agent sessions
 
