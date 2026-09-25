@@ -2,6 +2,24 @@
 
 Guidance for Claude Code when working in this repository.
 
+## Phase: prototyping in `sandbox/`
+
+This project starts experimental and project-specific. It supports one live
+workflow: turning the user's Zotero annotations into Wikidata edits for the
+CCRU graph. The approach is deliberately non-committal. Build small tools and
+notes in `sandbox/`, learn from using them, and only standardize into the
+formal plugin (`src/`, `addon/`) once there's a solid base of tools to draw
+from.
+
+- Start any workflow or annotation task by reading
+  `sandbox/docs/prototyping.md`.
+- Put experimental code, scripts and notes in `sandbox/`, not in `src/`.
+- Don't design plugin features, a fixed annotation schema or tag vocabulary
+  yet unless the user asks.
+
+The rest of this file describes the plugin shell and the Wikidata conventions
+it will follow once it gets features.
+
 ## What this is
 
 A Zotero 7/8 plugin for managing **Wikidata sources**: linking Zotero items to
