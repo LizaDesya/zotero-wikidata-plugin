@@ -353,8 +353,11 @@ async function draft(inputPath: string) {
     }
     const sources = st.sources ?? (st.source ? [st.source] : []);
     const notes: string[] = [];
-    sources.forEach((src, i) => {
-      const bang = i ? "!" : "";
+    // One line per reference. QS saved a `!S` group into the same reference
+    // as the first (2026-09-25), so each further reference repeats the
+    // statement on its own line, which QS adds as a separate reference.
+    const refLines: string[][] = [];
+    sources.forEach((src) => {
       const l = src.lang ?? lang;
       const refCols: string[] = [];
       if (src.url) refCols.push("S854", `"${clean(src.url)}"`);
@@ -369,8 +372,7 @@ async function draft(inputPath: string) {
       }
       const retrieved = src.retrieved ?? input.retrieved ?? today();
       refCols.push("S813", qsTime(retrieved));
-      refCols[0] = bang + refCols[0];
-      cols.push(...refCols);
+      refLines.push(refCols);
     });
     const z = st.zotero ?? {};
     const zbits = [
@@ -392,7 +394,16 @@ async function draft(inputPath: string) {
         .join("");
     const key = st.chunk ?? label(st.subject.toUpperCase());
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push({ line: cols.join("\t"), prov });
+    const stmt = cols.slice(0, 3);
+    (refLines.length ? refLines : [[]]).forEach((refCols, i) =>
+      groups.get(key)!.push({
+        // Qualifiers go on the first line only.
+        line: [...(i ? stmt : cols), ...refCols].join("\t"),
+        prov: i
+          ? `${label(st.subject.toUpperCase())} · ${pid} · ${value} · reference ${i + 1} of ${refLines.length} for this statement`
+          : prov,
+      }),
+    );
   }
 
   const snap = loadRepo();
@@ -567,6 +578,10 @@ async function runChecks(d: Doc, idx: number[], s = loadRepo()) {
         }
       }
       if (!l.refs.length) warn.push("no reference");
+      if (l.refs.length > 1)
+        warn.push(
+          "`!S` groups: QS saved these into ONE reference (2026-09-25). Put each further reference on its own repeated line instead",
+        );
       l.refs.forEach((g, k) => {
         const has = (p: string) => g.some((x) => x.pid === p);
         const tag = l.refs.length > 1 ? `reference ${k + 1}` : "reference";
@@ -794,6 +809,16 @@ async function verify(path: string, n?: string) {
     const out: string[] = [];
     let complete = 0;
     let partial = 0;
+    // References any line of the chunk accounts for, so a statement written
+    // by two lines (one per reference) doesn't list the other as extra.
+    const chunkUsed = new Set<any>();
+    for (const l of lines) {
+      const f = findStatement(live[l.subject]?.claims?.[l.pid], l.val);
+      for (const g of l.refs) {
+        const b = bestRef(g, f?.st.references ?? []);
+        if (b.ref && b.missing.length < g.length) chunkUsed.add(b.ref);
+      }
+    }
     lines.forEach((l, j) => {
       const claims = live[l.subject]?.claims?.[l.pid];
       const found = findStatement(claims, l.val);
@@ -821,6 +846,23 @@ async function verify(path: string, n?: string) {
       l.refs.forEach((g, k) => {
         const b = bestRef(g, refs);
         const tag = l.refs.length > 1 ? `reference ${k + 1}` : "reference";
+        const found = b.ref && b.missing.length < g.length;
+        // A source this group doesn't name, in the reference it landed in:
+        // two references were saved as one.
+        const foreign = found
+          ? ["P248", "P854"].flatMap((p) =>
+              (b.ref.snaks[p] ?? []).filter(
+                (x: any) =>
+                  !g.some((sn) => sn.pid === p && sameValue(sn.val, x)),
+              ),
+            )
+          : [];
+        if (found && (used.has(b.ref) || foreign.length)) {
+          refsOk = false;
+          notes.push(
+            `${tag} is merged with another source in one reference${foreign.length ? ` (${foreign.map((x: any) => (x.property === "P248" ? `stated in ${name(x.datavalue.value.id)}` : x.datavalue.value)).join(", ")})` : ""}: split it by hand`,
+          );
+        }
         if (b.ref) used.add(b.ref);
         if (!b.ref || b.missing.length === g.length) {
           refsOk = false;
@@ -837,7 +879,7 @@ async function verify(path: string, n?: string) {
         }
       });
       // References the batch didn't write: detail only the ones the snapshot lacks.
-      const others = refs.filter((r) => !used.has(r));
+      const others = refs.filter((r) => !used.has(r) && !chunkUsed.has(r));
       const known = others.filter((r) => refInSnapshot(s, l.subject, l.pid, r));
       for (const ref of others.filter((r) => !known.includes(r)))
         notes.push(

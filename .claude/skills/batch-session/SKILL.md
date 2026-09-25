@@ -32,6 +32,13 @@ Don't treat tags as a vocabulary or map them to properties.
 - Quotes go in exactly as highlighted. Don't trim, fix or paraphrase them.
   Don't wrap them in quote marks either. `qs.ts` strips marks that wrap the
   whole quote and keeps the original's own curly quotes.
+- **One reference per line. Never write `!S`.** In QS, `!S` doesn't start a
+  second reference. It merges its parts into the first, so one reference
+  ends up with two `stated in` values and two quotes (2026-09-25, Madame
+  Centauri P106 and P742). For a statement with several sources, repeat the
+  statement on its own line for each reference. `qs.ts draft` does this, and
+  `check` warns about any `!S` that remains. Several quotes from one source
+  can share a reference (one `S248`, several `S1683`).
 - Stop for the user's confirmation at each **Checkpoint** below.
 
 ## 0. Resume or start?
@@ -42,7 +49,11 @@ is a resume:
 1. Run `node sandbox/scripts/qs.ts next <batch.md>`.
 2. Summarise where things stand and wait. When the user says they ran chunk
    n, run `qs.ts mark <batch> n run`, then `qs.ts verify <batch> n`, and
-   report what landed and what is extra.
+   report what landed and what is extra. Treat "merged with another source
+   in one reference" as a failure: the user removes the extra source from
+   that reference by hand, since QS can't remove it, and you give them the
+   missing reference as its own line. Check live state with `verify` or
+   `wd.py --refresh`. A plain `wd.py item` can be a day stale.
 3. For a revision, edit the chunk's `qs` block and keep its provenance
    numbering in step. Then run `mark n revised` and `check <batch> n`.
 
@@ -126,11 +137,16 @@ drafted and run first. Put the ones that do in later chunks, using a
      would add a second reference. Tell the user.
    - **Quote flagged to check by hand**: ask the user.
    - **Won't draw**: explain why and what the fix in the hijinx repo is.
+   - **`!S` groups**: split them into one line per reference (see Hard
+     rules).
 4. Fix lines in the batch file, then re-run `qs.ts check <batch> <n>`.
 
 **Checkpoint:** hand over the batch file path, and run `qs.ts next` to show
 the first chunk. The user pastes each chunk into QS as V1 commands, keeping
-the tabs. From here the session continues as a resume (step 0).
+the tabs. If you also write chunks out as `.qs` files for pasting, always
+regenerate them from the batch file after a revision. An editor can save a
+stale copy over them, so grep them for `!S` and count the tabs before handing
+them over. From here the session continues as a resume (step 0).
 
 ## 5. Wrap up
 

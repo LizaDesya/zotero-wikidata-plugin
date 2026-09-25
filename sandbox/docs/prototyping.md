@@ -99,7 +99,7 @@ properties.
       "value": "Q24942459", // QID, or a plain value formatted by the property's datatype
       "qualifiers": { "P580": "1995" }, // value or array of values
       "source": {
-        // or "sources": [ ... ] for several reference groups (!S)
+        // or "sources": [ ... ] for several references (one line each)
         "url": "https://…",
         "statedIn": "Q…",
         "title": "…",
@@ -143,11 +143,16 @@ the status line, those sections and the log.
 - `verify` reads live Wikidata, not the snapshot. It moves `pending` to `run`
   when some lines are there, and moves `pending`, `run` or `revised` to
   `verified` when every line, qualifier and reference is there. It never
-  moves a chunk back. It records references and statements the batch didn't
+  moves a chunk back. A reference that also holds a source its line didn't
+  name reports as "merged with another source in one reference", which is a
+  failure, not a pass. It records references and statements the batch didn't
   write. Those not in the snapshot either are flagged as probably added by
   hand. Older ones are just counted.
 - Keep the tabs. An editor that turns them into spaces breaks the lines, and
-  `check` says so.
+  `check` says so. VS Code's Q# extension claims `.qs` files and its
+  format-on-save flattened them onto one line, so `.vscode/settings.json`
+  maps `sandbox/statements/*.qs` to plain text. (`sandbox/statements` is
+  also in `.prettierignore`, for the batch `.md` files.)
 
 **Checks** (warnings only): IDs exist and aren't redirects, values match
 their property's datatype, text length (1,500 limit), quote hazards (see
@@ -162,8 +167,10 @@ parsers' source (QS 2 `quickstatements.php`, QS 3.0
 `core/parsers/base.py`, `v1.py`):
 
 - `S854 "url"`, `S248 Q…`, `S813 +2026-09-25T00:00:00Z/11`,
-  `S1476 en:"…"`, `S1683 en:"…"`. Qualifiers use `P`, and `!S` starts a new
-  reference group.
+  `S1476 en:"…"`, `S1683 en:"…"`. Qualifiers use `P`. The help page says
+  `!S` starts a new reference group, but in practice (2026-09-25) QS saved
+  it into the same reference as the first. So `draft` writes each further
+  reference as a repeated statement line, and `check` warns about `!S`.
 - Both parsers read string values greedily (`^"(.*)"$`), so straight double
   quotes inside a quote survive. There is no escape, and QS 3.0 only guards
   `|` inside quotes that pair up. `check` warns rather than altering the text.
@@ -226,6 +233,16 @@ Add dated entries as sessions teach us something.
   request if one ID doesn't exist, so `lib.ts` drops that ID and retries. A
   statement that already exists with the same reference URL gets a second
   reference from QS, not a merged one, and `check` now warns about it.
+- 2026-09-25, first real batch (Madame Centauri, `p:monterre-zelda`): a line
+  with two `!S` reference groups was saved as one reference holding both
+  `stated in` values and both quotes, and `verify` passed it, because each
+  part was present. Reading the parsers' source didn't predict this, so trust
+  the saved result over the syntax docs. `verify` now flags a reference that
+  holds a source its group didn't name, and `draft` writes one line per
+  reference. Confirmed in use: a repeated line added a separate reference. The Q# VS Code extension also claims `.qs` files and flattened
+  them on save. `wd.py` caches responses for a day, so after an edit it
+  showed the item as it was before. Check edits with `qs.ts verify`, or pass
+  `wd.py --refresh`.
 
 ## Candidates for the plugin
 
